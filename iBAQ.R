@@ -1,36 +1,40 @@
-####PD-iBAQ-calculation
-###  v1.1 updates: 
-###   1. 1keep only the first protein accesion number when isoforms are presented
-
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#iBAQ-calculation V1.1
+#Graham Lab, USC
+#03/26/2018
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #loading required packages
 library(ggplot2)
 library(gridExtra)
 library(plyr)
 library(RColorBrewer)
 library(dplyr)
+library(reshape2)
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#loading iBaq normalization factors library  
+#the iBaq normalization factors are the number of tryptic peptides with length between 6 and 30, inclusive
 
-#loading library contains the number of tryptic peptides with length between 6 and 30, inclusive
-
-#df1=read.table(file = "20170822-Human-uniprot-all-reviewed-iBAQ-number-completed.txt", sep = "\t", header=T) # full library contains prot descritption and other information
-df2=read.table(file = "20170822-Human-uniprot-all-reviewed-iBAQ-counter-only.txt", sep = "\t", header=T) # library contain the number of tryptic peptides with length between 6 and 30, inclusive
-
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-
-#load PD result
-#data should be PD peptideGroups median normalized (done in excel), KNN imputed (done in R)
-
-PeptidesAll <- read.table(file = "test-in.txt", sep = "\t", header=T)
-
-
+normFactor=read.table(file = "20170822-Human-uniprot-all-reviewed-iBAQ-counter-only.txt", sep = "\t", header=T) # library contain the number of tryptic peptides with length between 6 and 30, inclusive
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-#step 1: select your columns
-colnames(PeptidesAll)
+#load PD peptideGroups result
+#please strip all special characters #,(,),',$, and ect
+#data should be median normalized (done in excel), KNN imputed (done in R),
+#For tutorial, please load PD peptideGroup output "test-in.txt"
+
+pepGroupAll <- read.table(file = "test-in.txt", sep = "\t", header=T)
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#select your ther starting and ending position of sample columns
+
+colnames(pepGroupAll)
+## below are the column names for the example PD peptideGroup output "test-in.txt"
 # [1] "Checked"                                           "Confidence"                                       
 # [3] "Sequence"                                          "Modifications"                                    
 # [5] "Modifications.in.Master.Proteins"                  "Qvality.PEP"                                      
@@ -46,96 +50,102 @@ colnames(PeptidesAll)
 # [25] "Confidence..by.Search.Engine...Sequest.HT"         "Percolator.q.Value..by.Search.Engine...Sequest.HT"
 # [27] "Percolator.PEP..by.Search.Engine...Sequest.HT"     "XCorr..by
 
-### The quatitation values are from column 16 to 23, total of 8 samples
+### The quatitation values are from column 16 to 23, total of 8 samples for test-in.txt 
 sampleStart=16
 sampleEnd=23
-samples <- as.factor(colnames(PeptidesAll[sampleStart:sampleEnd])) ##select your sample quantitation columns
+samples <- as.factor(colnames(pepGroupAll[sampleStart:sampleEnd])) # variable "samples" contains all your sample name
 
 
 
 ##### Reconstruct data frame
-
 #### seperate rows with ";"
+# For peptides that are mapped to multiple proteins (A; B; C), split these rows into individual rows
+# one for each protein mapping (A; B; C becomes three rows, one for A, one for B, one for C)
 
-#find position of prot contain ;
-#which(grepl(";",Peptides$Master.Protein.Accessions)==TRUE)
-
-pepUnique<-PeptidesAll[ which(grepl(";",Peptides$Master.Protein.Accessions)==FALSE),]
+pepUnique<-pepGroupAll[ which(grepl(";",pepGroupAll$Master.Protein.Accessions)==FALSE),]
 uniqueness1 <- as.data.frame(pepUnique[,1])
 colnames(uniqueness1) <- c("Uniqueness")
 uniqueness1[]<-1
 pepUnique<-cbind(pepUnique,uniqueness1)
 
 
-pepNotUnique<-PeptidesAll[ which(grepl(";",Peptides$Master.Protein.Accessions)==TRUE),]
+pepNotUnique<-pepGroupAll[ which(grepl(";",pepGroupAll$Master.Protein.Accessions)==TRUE),]
 
-pep1<-pepNotUnique[1,]
-strsplit(as.character(pep1$Master.Protein.Accessions),";")
-#strsplit(as.character(pep1$Master.Protein.Accessions),";")[[1]][1]
-#length(strsplit(as.character(pep1$Master.Protein.Accessions),";")[[1]])
-
-df4={}
+pepNotUniqueNew={}
 for(k in 1:length(pepNotUnique)){
   temp<-pepNotUnique[k,]
   for (i in 1:length(strsplit(as.character(temp$Master.Protein.Accessions),";")[[1]])) {
   temp$Master.Protein.Accessions<-strsplit(as.character(pepNotUnique[k,]$Master.Protein.Accessions),";")[[1]][i]
-  df4 <- rbind(df4,temp)
+  pepNotUniqueNew <- rbind(pepNotUniqueNew,temp)
 }
 }
 
-uniqueness2 <- as.data.frame(df4[,1])
+uniqueness2 <- as.data.frame(pepNotUniqueNew[,1])
 colnames(uniqueness2) <- c("Uniqueness")
 uniqueness2[]<-0
-df4<-cbind(df4,uniqueness2)
+pepNotUniqueNew<-cbind(pepNotUniqueNew,uniqueness2)
 
-Peptides<-rbind(pepUnique,df4)
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+Peptides<-rbind(pepUnique,pepNotUniqueNew)
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# 
+# #iBaq function
 
-#iBAQ algorithm
-#may need to re-define column number for sample intensities, here there are 10 samples from col 30 to 39
-
-unique.proteins <- unique(Peptides$Master.Protein.Accessions)
-sum.Peptides <- data.frame(matrix(data = NA, nrow = length(unique.proteins), ncol = 1))
-colnames(sum.Peptides) <- c("Protein")
-
-# which(colnames(Peptides)=="Master.Protein.Accessions")
-
-#summing over peptides intensities
-for (i in 1:length(samples)){
-  temp.df <- data.frame(matrix(data = NA, nrow = nrow(Peptides), ncol = 2))
-  colnames(temp.df) <- c("Protein", "Intensity")
-  temp.sample <- as.character(samples[i])
-  for (j in 1:nrow(Peptides)){
-    temp.df$Protein[j] = as.character(Peptides[j,which(colnames(Peptides)=="Master.Protein.Accessions")])
-    temp.df$Intensity[j] = Peptides[j,(i+sampleStart-1)]##scaning over samples intensities columns
-  }
-  sum.temp.df <- ddply(temp.df, .(Protein), summarize,
-                       sum.Peptides = sum(Intensity, na.rm = TRUE))
-  colnames(sum.temp.df) <- c("Protein", as.character(samples[i]))
-  sum.Peptides <- cbind(sum.Peptides, sum.temp.df)
-}
-
-sum.Peptides[,1] <- NULL
-Proteins <- as.data.frame(sum.Peptides[,1])
-colnames(Proteins) <- c("Master.Protein.Accessions")
-
-sum.Peptides.df <- sum.Peptides[,seq(2, 2*length(samples), 2)]
-sum.Peptides.df <- cbind(Proteins, sum.Peptides.df)
-
-
-#dividing intensities by the sum of possible tryptic pep between 6 and 30 and observed miss cleavages
-df3={}
-for (i in 1:nrow(df2)){
+pepGroup_to_iBaq <- function(PeptidesDataFrame,sampleStartPos,SampleEndPos,sampleOrder,outputName) {
+  ##extract quantitation values
+  pepN<-cbind(PeptidesDataFrame$Master.Protein.Accessions,PeptidesDataFrame[,(sampleStartPos:SampleEndPos)],PeptidesDataFrame$Uniqueness)
+  colnames(pepN) <- c("Master.Protein.Accessions", as.character(sampleOrder),"Uniqueness")
   
-  # example match > which(grepl("P09960",sum.Peptides.df$Master.Protein.Accessions, ignore.case = TRUE))
-  index <-  which(grepl(paste("^",as.character(df2[i,1]),"$",sep = ""),sum.Peptides.df$Master.Protein.Accessions, ignore.case = TRUE))
-  index2 <-  which(grepl(paste("^",as.character(df2[i,1]),"$",sep = ""),Peptides$Master.Protein.Accessions, ignore.case = TRUE))
-  df3 <- rbind(df3,cbind(sum.Peptides.df[index,1],sum.Peptides.df[index,2:(length(samples)+1)] / (as.numeric(df2[i,2])+as.numeric(Peptides[index2,]$Missed.Cleavages))))
+  ##convert to long format for using ddply()
+  pepNlong <- melt(pepN,
+                   # ID variables - all the variables to keep but not split apart on
+                   id.vars=c("Master.Protein.Accessions", "Uniqueness"),
+                   # The source columns
+                   measure.vars=as.character(sampleOrder),
+                   # Name of the destination column that will identify the original
+                   # column that the measurement came from
+                   variable.name="samples",
+                   value.name="Intensity"
+  )
+  
+  ##New: summing over peptides intensities
+  pepSum<-ddply(pepNlong, .(Master.Protein.Accessions,samples), summarize,
+                sum = round(sum(Intensity), 4),
+                uniquePepNum = sum(Uniqueness),
+                quantPepNum=n())
+  ##convert to wide format
+  pepSumWide <- dcast(pepSum, Master.Protein.Accessions+uniquePepNum+quantPepNum ~ samples, value.var="sum")
+  ##change columns order
+  pepSumWide[ , c("iBaqFactor")] <- NA
+  pepSumWide <- pepSumWide[c("Master.Protein.Accessions","uniquePepNum","quantPepNum","iBaqFactor",as.character(sampleOrder))]
+  
+  
+  ###export sum of peptides
+  #write.table(pepSumWide, file = "outputName-sumPep.txt",
+  #            sep = "\t", quote=F, row.names=F)
+  
+  iBaqProt={}
+  for (i in 1:nrow(normFactor)){
+    index <-  which(grepl(paste("^",as.character(normFactor[i,1]),"$",sep = ""),pepSumWide$Master.Protein.Accessions, ignore.case = TRUE))
+    index2 <-  which(grepl(paste("^",as.character(normFactor[i,1]),"$",sep = ""),PeptidesDataFrame$Master.Protein.Accessions, ignore.case = TRUE))
+    pepSumWide[index,4]<-as.numeric(normFactor[i,2])
+    iBaqProt <- rbind(iBaqProt,cbind(pepSumWide[index,1:4],pepSumWide[index,5:(length(sampleOrder)+4)]/ (as.numeric(normFactor[i,2]))))
+  }
+  
+  iBaqProt <- iBaqProt[c("Master.Protein.Accessions",as.character(sampleOrder),"uniquePepNum","quantPepNum","iBaqFactor")]
+  
+  
+  write.table(iBaqProt, file = outputName,
+              sep = "\t", quote=F, row.names=F)
+
 }
 
+#Call pepGroup_to_iBaq()
+#Peptides: reconstructed peptideGroups
+#sampleStart: the starting position of your sample column number
+#sampleEnd: the end position of your sample column number
+#samples: sample names vector
+#"test-out-test2.txt": change output name
+pepGroup_to_iBaq(Peptides,sampleStart,sampleEnd,samples,"test-out-test2.txt")
 
-#output, please change the output file name as needed
-write.table(df3, file = "test-out.txt",
-            sep = "\t", quote=F, row.names=F)
 
