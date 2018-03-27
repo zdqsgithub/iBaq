@@ -1,7 +1,5 @@
-Intensity-based absolute quantification (iBaq) of proteins on PD 2.1 peptideGroups.txt. 
-DQZ, Graham Lab 
-System Biology lab University of Southern California 
-
+Intensity-based Absolute Quantification (iBaq) r Script
+DQZ, Graham Lab, USC
 
 Future update:
 
